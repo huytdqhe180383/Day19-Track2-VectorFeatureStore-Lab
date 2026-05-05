@@ -2,12 +2,24 @@
 ## Two paths: lightweight (default, no Docker) and full Docker.
 
 VENV     := .venv
+ifeq ($(OS),Windows_NT)
+PY       := $(VENV)/Scripts/python.exe
+SETUP_LITE := powershell -NoProfile -ExecutionPolicy Bypass -File setup-lite.ps1
+SETUP_DOCKER := powershell -NoProfile -ExecutionPolicy Bypass -File setup-docker.ps1
+CLEAN_LITE := powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Recurse -Force .venv, data/corpus_vn.jsonl, data/golden_set.jsonl, data/qdrant_storage, app/feast_repo/data, app/feast_repo/registry.db, app/feast_repo/online_store.db, notebooks/*.ipynb, notebooks/.ipynb_checkpoints -ErrorAction SilentlyContinue"
+else
 PY       := $(VENV)/bin/python
-PIP      := $(VENV)/bin/pip
-JUPYTER  := $(VENV)/bin/jupyter
-JUPYTEXT := $(VENV)/bin/jupytext
-UVICORN  := $(VENV)/bin/uvicorn
-PYTEST   := $(VENV)/bin/pytest
+SETUP_LITE := bash setup-lite.sh
+SETUP_DOCKER := bash setup-docker.sh
+CLEAN_LITE := rm -rf $(VENV) data/corpus_vn.jsonl data/golden_set.jsonl data/qdrant_storage \
+	app/feast_repo/data app/feast_repo/registry.db app/feast_repo/online_store.db \
+	notebooks/*.ipynb notebooks/.ipynb_checkpoints
+endif
+PIP      := $(PY) -m pip
+JUPYTER  := $(PY) -m jupyter
+JUPYTEXT := $(PY) -m jupytext
+UVICORN  := $(PY) -m uvicorn
+PYTEST   := $(PY) -m pytest
 
 .DEFAULT_GOAL := help
 
@@ -20,7 +32,7 @@ help: ## Show this help
 # ─────────────────────────────────────────────────────────────
 
 setup-lite: ## [lite] Create venv + install + seed corpus + smoke test
-	@bash setup-lite.sh
+	@$(SETUP_LITE)
 
 verify-lite: ## [lite] 5-second smoke test (Qdrant memory + BM25 + Feast SQLite)
 	@$(PY) scripts/verify_lite.py
@@ -42,16 +54,14 @@ test: ## [both] Run pytest (app + scripts)
 	@$(PYTEST) -q
 
 clean-lite: ## [lite] Wipe venv + data + Feast registry
-	rm -rf $(VENV) data/corpus_vn.jsonl data/golden_set.jsonl data/qdrant_storage \
-	       app/feast_repo/data app/feast_repo/registry.db app/feast_repo/online_store.db \
-	       notebooks/*.ipynb notebooks/.ipynb_checkpoints
+	@$(CLEAN_LITE)
 
 # ─────────────────────────────────────────────────────────────
 # Docker path (full stack: Qdrant + Redis + Postgres)
 # ─────────────────────────────────────────────────────────────
 
 setup-docker: ## [docker] Bring up Docker stack + venv + seed + smoke test
-	@bash setup-docker.sh
+	@$(SETUP_DOCKER)
 
 verify-docker: ## [docker] Verify all 3 services reachable + Feast wired
 	@$(PY) scripts/verify_docker.py
